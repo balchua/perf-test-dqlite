@@ -1,0 +1,19 @@
+#!/bin/bash
+
+set -ex
+
+export PATH="$SNAP/usr/sbin:$SNAP/usr/bin:$SNAP/sbin:$SNAP/bin:$PATH"
+ARCH="$($SNAP/bin/uname -m)"
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$SNAP/lib:$SNAP/usr/lib:$SNAP/lib/$ARCH-linux-gnu:$SNAP/usr/lib/$ARCH-linux-gnu"
+export LD_LIBRARY_PATH=$SNAP_LIBRARY_PATH:$LD_LIBRARY_PATH
+export XDG_RUNTIME_DIR="${SNAP_COMMON}/run"
+export LIBRAFT_TRACE="1"
+export LIBDQLITE_TRACE="1"
+mkdir -p "${XDG_RUNTIME_DIR}"
+
+app=perf-dqlite
+
+mkdir -p /tmp/node1
+
+declare -a args="($(cat $SNAP_DATA/args/$app))"
+exec "$SNAP/bin/$app" "${args[@]}"
