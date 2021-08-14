@@ -9,6 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Rican7/retry"
+	"github.com/Rican7/retry/backoff"
+	"github.com/Rican7/retry/strategy"
 	"github.com/canonical/go-dqlite/app"
 	"github.com/canonical/go-dqlite/client"
 )
@@ -26,69 +29,115 @@ func timeTrack(start time.Time, name string) {
 }
 
 func query(ctx context.Context, db *sql.DB, runnerId string) {
-	d := time.Now().Add(10 * time.Millisecond)
+	d := time.Now().Add(2 * time.Second)
 	ctx, cancel := context.WithDeadline(context.Background(), d)
 	defer timeTrack(time.Now(), "query")
 	defer cancel()
 	row := db.QueryRow(queryStatement)
 	var result string
-	if err := row.Scan(&result); err != nil {
-		result = fmt.Sprintf("Error: %s", err.Error())
+
+	action := func(attempt uint) error {
+		var err error
+		if err := row.Scan(&result); err != nil {
+			log.Printf("Query Attenpt (%d) - %s", attempt, err.Error())
+		}
+		if err == nil {
+			log.Printf("%s - Retrieved successfully %s.\n", runnerId, result)
+		}
+
+		return err
 	}
+
+	err := retry.Retry(
+		action,
+		strategy.Limit(20),
+		strategy.Backoff(backoff.Linear(200*time.Millisecond)),
+	)
+
+	if err != nil {
+		log.Fatalf("Query Error: %v", err.Error())
+	}
+
 	//Check context for error, If ctx.Err() != nil gracefully exit the current execution
 	if ctx.Err() != nil {
-		log.Printf("query - %s \n", ctx.Err())
+		log.Fatalf("query - %s \n", ctx.Err())
 	}
-	log.Printf("%s - Retrieved successfully %s.\n", runnerId, result)
+
 }
 
 func insert(ctx context.Context, db *sql.DB, runnerId string) {
-	d := time.Now().Add(100 * time.Millisecond)
+	d := time.Now().Add(20 * time.Second)
 	ctx, cancel := context.WithDeadline(context.Background(), d)
 	defer timeTrack(time.Now(), "insert")
 	defer cancel()
 	now := time.Now()
 	nanos := now.UnixNano()
-	log.Printf("%s - Begin transaction.\n", runnerId)
-	// t, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
-	// if err != nil {
-	// 	fmt.Sprintf("Error: %s", err.Error())
-	// }
-	if _, err := db.Exec(update, nanos, "anyvalue"); err != nil {
-		fmt.Sprintf("Error: %s", err.Error())
+
+	action := func(attempt uint) error {
+		var err error
+		if _, err = db.Exec(update, nanos, "anyvalue"); err != nil {
+			log.Printf("Insert (attempt %d) - %s", attempt, err.Error())
+		}
+		return err
 	}
+
+	err := retry.Retry(
+		action,
+		strategy.Limit(20),
+		strategy.Backoff(backoff.Linear(200*time.Millisecond)),
+	)
+
+	if err != nil {
+		log.Fatalf("Insert Error: %v", err.Error())
+	}
+
 	//Check context for error, If ctx.Err() != nil gracefully exit the current execution
 	if ctx.Err() != nil {
-		log.Printf("insert - %s \n", ctx.Err())
+		log.Fatalf("insert - %s \n", ctx.Err())
 	}
-	//t.Commit()
+
 	log.Printf("%s - Inserted and committed successfully.\n", runnerId)
 
 }
 
 func delete(ctx context.Context, db *sql.DB, runnerId string) {
-	d := time.Now().Add(100 * time.Millisecond)
+	d := time.Now().Add(30 * time.Second)
 	ctx, cancel := context.WithDeadline(context.Background(), d)
 	defer timeTrack(time.Now(), "delete")
 	defer cancel()
 	now := time.Now()
 	nanos := now.UnixNano()
 	var result sql.Result
-	var err error
 	var rowsAffected int64
-	if result, err = db.Exec(deleteStatement, nanos); err != nil {
-		fmt.Sprintf("Error: %s", err.Error())
-	}
-	if result != nil {
-		rowsAffected, err = result.RowsAffected()
-		if err != nil {
-			log.Fatal("Unable to perform delete.")
+
+	action := func(attempt uint) error {
+		var err error
+		if result, err = db.Exec(deleteStatement, nanos); err != nil {
+			log.Fatalf("Delete Attempt (%d) - %s", attempt, err.Error())
 		}
-		log.Printf("%s - Deleted successfully [%d].\n", runnerId, rowsAffected)
+		if result != nil {
+			rowsAffected, err = result.RowsAffected()
+			if err != nil {
+				log.Fatal("Unable to perform delete.")
+			}
+			log.Printf("%s - Deleted successfully [%d].\n", runnerId, rowsAffected)
+		}
+		return err
 	}
+
+	err := retry.Retry(
+		action,
+		strategy.Limit(20),
+		strategy.Backoff(backoff.Linear(200*time.Millisecond)),
+	)
+
+	if err != nil {
+		log.Fatalf("Delete Error: %v", err.Error())
+	}
+
 	//Check context for error, If ctx.Err() != nil gracefully exit the current execution
 	if ctx.Err() != nil {
-		log.Printf("delete - %s \n", ctx.Err())
+		log.Fatalf("delete - %s \n", ctx.Err())
 	}
 
 }
@@ -105,10 +154,8 @@ func doInsert(ctx context.Context, db *sql.DB, runnerId string) {
 }
 
 func doDelete(ctx context.Context, db *sql.DB, runnerId string) {
-	d := time.Now().Add(100 * time.Millisecond)
-	ctx, cancel := context.WithDeadline(context.Background(), d)
-	defer cancel()
-	ticker := time.NewTicker(2 * time.Second)
+
+	ticker := time.NewTicker(600 * time.Second)
 	for {
 		select {
 		case <-ticker.C:
@@ -119,7 +166,7 @@ func doDelete(ctx context.Context, db *sql.DB, runnerId string) {
 
 func doQuery(ctx context.Context, db *sql.DB, runnerId string) {
 
-	ticker := time.NewTicker(20 * time.Millisecond)
+	ticker := time.NewTicker(1 * time.Second)
 	for {
 		select {
 		case <-ticker.C:
@@ -181,7 +228,7 @@ func main() {
 	fmt.Println("Start")
 	dir := "/tmp/node1"
 	address := "127.0.0.1:6666" // Unique node address
-
+	var err error
 	logFunc := func(l client.LogLevel, format string, a ...interface{}) {
 		log.Printf(fmt.Sprintf("%s\n", format), a...)
 	}
@@ -199,15 +246,17 @@ func main() {
 	if _, err := db.Exec(schema); err != nil {
 		fmt.Println("Unable to create schema.")
 	}
-	fmt.Println("Continuing with insert")
 
+	time.Sleep(5 * time.Second)
+	log.Printf("Continuing...")
+	// we will launch this many go routines each, insert, query and delete
 	for i := 0; i < 100; i++ {
 		leader, _ := isLeader(ctx, *app)
 		if leader {
 			log.Printf("I am the leader")
 		}
 		go doInsert(context.Background(), db, fmt.Sprintf("runner-%d", i))
-		go doDelete(context.Background(), db, fmt.Sprintf("runner-%d", i))
+		//go doDelete(context.Background(), db, fmt.Sprintf("runner-%d", i))
 		go doQuery(context.Background(), db, fmt.Sprintf("runner-%d", i))
 	}
 
