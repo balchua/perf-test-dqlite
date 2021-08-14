@@ -5,21 +5,12 @@ This is to test how much hammering can dqlite take.
 ## Build
 
 ```shell
-export CGO_LDFLAGS_ALLOW="-Wl,-z,now"
-go build -tags libsqlite3
+snapcraft --use-lxd
 ```
 
 ## Run
 
-```shell
-./perf-dqlite
-```
 
 ## Notes
 
-When the number of go-routines is increased to say 20, each performing an insert at every 100 milliseconds.
-This can cause the program to core dump with this error.
-
-```
-perf-dqlite: src/db.c:40: db__open_follower: Assertion `db->follower == NULL' failed.
-```
+Grep for the `TIMETRACKING` log, to see how long insert, query or delete is taking.  Most if not all deadlines are set to `100 ms`
