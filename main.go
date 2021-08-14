@@ -31,7 +31,7 @@ func timeTrack(start time.Time, name string) {
 func query(ctx context.Context, db *sql.DB, runnerId string) {
 	d := time.Now().Add(2 * time.Second)
 	ctx, cancel := context.WithDeadline(context.Background(), d)
-	defer timeTrack(time.Now(), "query")
+	defer timeTrack(time.Now(), fmt.Sprintf("query - %s", runnerId))
 	defer cancel()
 	row := db.QueryRow(queryStatement)
 	var result string
@@ -39,7 +39,7 @@ func query(ctx context.Context, db *sql.DB, runnerId string) {
 	action := func(attempt uint) error {
 		var err error
 		if err := row.Scan(&result); err != nil {
-			log.Printf("Query Attenpt (%d) - %s", attempt, err.Error())
+			log.Printf("Query [%s] Attenpt (%d) - %s", runnerId, attempt, err.Error())
 		}
 		if err == nil {
 			log.Printf("%s - Retrieved successfully %s.\n", runnerId, result)
@@ -55,12 +55,12 @@ func query(ctx context.Context, db *sql.DB, runnerId string) {
 	)
 
 	if err != nil {
-		log.Fatalf("Query Error: %v", err.Error())
+		log.Fatalf("Query[%s] Error: %v", runnerId, err.Error())
 	}
 
 	//Check context for error, If ctx.Err() != nil gracefully exit the current execution
 	if ctx.Err() != nil {
-		log.Fatalf("query - %s \n", ctx.Err())
+		log.Fatalf("query[%s]- %v \n", runnerId, ctx.Err())
 	}
 
 }
@@ -68,7 +68,7 @@ func query(ctx context.Context, db *sql.DB, runnerId string) {
 func insert(ctx context.Context, db *sql.DB, runnerId string) {
 	d := time.Now().Add(20 * time.Second)
 	ctx, cancel := context.WithDeadline(context.Background(), d)
-	defer timeTrack(time.Now(), "insert")
+	defer timeTrack(time.Now(), fmt.Sprintf("insert - %s", runnerId))
 	defer cancel()
 	now := time.Now()
 	nanos := now.UnixNano()
@@ -76,7 +76,7 @@ func insert(ctx context.Context, db *sql.DB, runnerId string) {
 	action := func(attempt uint) error {
 		var err error
 		if _, err = db.Exec(update, nanos, "anyvalue"); err != nil {
-			log.Printf("Insert (attempt %d) - %s", attempt, err.Error())
+			log.Printf("Insert [%s](attempt %d) - %s", runnerId, attempt, err.Error())
 		}
 		return err
 	}
@@ -88,12 +88,12 @@ func insert(ctx context.Context, db *sql.DB, runnerId string) {
 	)
 
 	if err != nil {
-		log.Fatalf("Insert Error: %v", err.Error())
+		log.Fatalf("Insert [%s] Error: %v", runnerId, err.Error())
 	}
 
 	//Check context for error, If ctx.Err() != nil gracefully exit the current execution
 	if ctx.Err() != nil {
-		log.Fatalf("insert - %s \n", ctx.Err())
+		log.Fatalf("insert [%s] - %v \n", runnerId, ctx.Err())
 	}
 
 	log.Printf("%s - Inserted and committed successfully.\n", runnerId)
@@ -103,7 +103,7 @@ func insert(ctx context.Context, db *sql.DB, runnerId string) {
 func delete(ctx context.Context, db *sql.DB, runnerId string) {
 	d := time.Now().Add(30 * time.Second)
 	ctx, cancel := context.WithDeadline(context.Background(), d)
-	defer timeTrack(time.Now(), "delete")
+	defer timeTrack(time.Now(), fmt.Sprintf("delete - %s", runnerId))
 	defer cancel()
 	now := time.Now()
 	nanos := now.UnixNano()
@@ -113,12 +113,12 @@ func delete(ctx context.Context, db *sql.DB, runnerId string) {
 	action := func(attempt uint) error {
 		var err error
 		if result, err = db.Exec(deleteStatement, nanos); err != nil {
-			log.Fatalf("Delete Attempt (%d) - %s", attempt, err.Error())
+			log.Printf("Delete [%s] Attempt (%d) - %s", runnerId, attempt, err.Error())
 		}
 		if result != nil {
 			rowsAffected, err = result.RowsAffected()
 			if err != nil {
-				log.Fatal("Unable to perform delete.")
+				log.Printf("Unable to perform delete - %s.", runnerId)
 			}
 			log.Printf("%s - Deleted successfully [%d].\n", runnerId, rowsAffected)
 		}
@@ -132,12 +132,12 @@ func delete(ctx context.Context, db *sql.DB, runnerId string) {
 	)
 
 	if err != nil {
-		log.Fatalf("Delete Error: %v", err.Error())
+		log.Fatalf("Delete [%s] Error: %v", runnerId, err.Error())
 	}
 
 	//Check context for error, If ctx.Err() != nil gracefully exit the current execution
 	if ctx.Err() != nil {
-		log.Fatalf("delete - %s \n", ctx.Err())
+		log.Fatalf("delete [%s] - %v \n", runnerId, ctx.Err())
 	}
 
 }
@@ -250,7 +250,7 @@ func main() {
 	time.Sleep(5 * time.Second)
 	log.Printf("Continuing...")
 	// we will launch this many go routines each, insert, query and delete
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 10; i++ {
 		leader, _ := isLeader(ctx, *app)
 		if leader {
 			log.Printf("I am the leader")
