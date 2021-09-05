@@ -110,7 +110,7 @@ parts:
       go version
       export GOPATH=${SNAPCRAFT_STAGE}   
       rm -rf $GOPATH/go.*
-      CGO_CFLAGS="-I${SNAPCRAFT_STAGE}/usr/include/" CGO_LDFLAGS="-L${SNAPCRAFT_STAGE}/lib" CGO_LDFLAGS_ALLOW="-Wl,-z,now" go build -o perf-dqlite -tags libsqlite3,dqlite main.go
+      CGO_CFLAGS="-I${SNAPCRAFT_STAGE}/usr/include/" CGO_LDFLAGS="-L${SNAPCRAFT_STAGE}/lib" CGO_LDFLAGS_ALLOW="-Wl,-z,now" go build -o perf-dqlite -tags libsqlite3,dqlite . 
       mkdir -p $SNAPCRAFT_PART_INSTALL/bin
       cp ./perf-dqlite $SNAPCRAFT_PART_INSTALL/bin/
       snapcraftctl build
